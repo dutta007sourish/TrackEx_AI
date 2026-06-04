@@ -111,7 +111,8 @@ class ReviewViewModel(application: Application) : AndroidViewModel(application) 
                 onFailure = { error ->
                     _uiState.value = ReviewUiState(
                         isLoading = false,
-                        error = error.message ?: "Failed to parse bill"
+                        error = toUserFriendlyError(error),
+                        items = listOf(ExpenseItemState())
                     )
                 }
             )
@@ -281,6 +282,44 @@ class ReviewViewModel(application: Application) : AndroidViewModel(application) 
     override fun onCleared() {
         super.onCleared()
         cleanupTempFile()
+    }
+
+    private fun toUserFriendlyError(error: Throwable): String {
+        val message = error.message ?: ""
+        return when {
+            error is java.net.UnknownHostException ||
+                message.contains("Unable to resolve host", ignoreCase = true) ->
+                "No internet connection. Please check your network and try again."
+
+            error is javax.net.ssl.SSLException ||
+                message.contains("CertPathValidator", ignoreCase = true) ||
+                message.contains("SSL", ignoreCase = true) ||
+                message.contains("Trust anchor", ignoreCase = true) ->
+                "Secure connection failed. Please check your network or try again later."
+
+            error is java.net.SocketTimeoutException ||
+                message.contains("timeout", ignoreCase = true) ->
+                "Request timed out. Please try again."
+
+            message.contains("API key", ignoreCase = true) ||
+                message.contains("401", ignoreCase = true) ||
+                message.contains("Unauthorized", ignoreCase = true) ->
+                "Invalid API key. Please check your OpenAI API key in settings."
+
+            message.contains("429", ignoreCase = true) ||
+                message.contains("rate limit", ignoreCase = true) ->
+                "Too many requests. Please wait a moment and try again."
+
+            message.contains("500", ignoreCase = true) ||
+                message.contains("server error", ignoreCase = true) ->
+                "The AI service is temporarily unavailable. Please try again later."
+
+            message.contains("parse", ignoreCase = true) ||
+                message.contains("JSON", ignoreCase = true) ->
+                "Could not read the bill. Try taking a clearer photo."
+
+            else -> "Something went wrong while analyzing the bill. Please try again."
+        }
     }
 
     private fun cleanupTempFile() {

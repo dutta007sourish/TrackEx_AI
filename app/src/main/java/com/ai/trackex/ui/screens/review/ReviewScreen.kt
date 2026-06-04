@@ -117,6 +117,12 @@ fun ReviewScreen(
         if (uiState.saved) onConfirm()
     }
 
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let {
+            snackbarHostState.showSnackbar(it)
+        }
+    }
+
     LaunchedEffect(uiState.voiceError) {
         uiState.voiceError?.let {
             snackbarHostState.showSnackbar(it)
@@ -127,7 +133,7 @@ fun ReviewScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            if (!uiState.isLoading && uiState.error == null) {
+            if (!uiState.isLoading) {
                 val allValid = uiState.items.all { it.amount.toDoubleOrNull() != null }
                 Surface(
                     tonalElevation = 3.dp,
@@ -214,46 +220,6 @@ fun ReviewScreen(
                             text = "Analyzing bill...",
                             style = MaterialTheme.typography.bodyLarge
                         )
-                    }
-                }
-            }
-
-            uiState.error != null -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(24.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.ErrorOutline,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Failed to analyze bill",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = uiState.error ?: "",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        OutlinedButton(onClick = {
-                            viewModel.cancel()
-                            onCancel()
-                        }) {
-                            Text("Go Back")
-                        }
                     }
                 }
             }
