@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.io.File
+import com.ai.trackex.util.TempImageManager
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -51,7 +51,6 @@ class ReviewViewModel(application: Application) : AndroidViewModel(application) 
     private val categoryRepository: CategoryRepository
     private val billParser: BillParserService
     private var imageUri: String = ""
-    private var isCameraImage: Boolean = false
 
     private val _uiState = MutableStateFlow(ReviewUiState())
     val uiState: StateFlow<ReviewUiState> = _uiState
@@ -92,8 +91,6 @@ class ReviewViewModel(application: Application) : AndroidViewModel(application) 
     fun parseImage(uri: String) {
         if (imageUri == uri) return
         imageUri = uri
-
-        isCameraImage = uri.contains("bill_images")
 
         viewModelScope.launch {
             _uiState.value = ReviewUiState(isLoading = true)
@@ -281,24 +278,14 @@ class ReviewViewModel(application: Application) : AndroidViewModel(application) 
         cleanupTempFile()
     }
 
+    override fun onCleared() {
+        super.onCleared()
+        cleanupTempFile()
+    }
+
     private fun cleanupTempFile() {
-        if (isCameraImage) {
-            try {
-                val context = getApplication<Application>()
-                val cacheDir = File(context.cacheDir, "bill_images")
-                if (cacheDir.exists()) {
-                    cacheDir.listFiles()?.forEach { file ->
-                        val fileUri = androidx.core.content.FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            file
-                        )
-                        if (fileUri.toString() == imageUri) {
-                            file.delete()
-                        }
-                    }
-                }
-            } catch (_: Exception) { }
+        if (imageUri.isNotEmpty()) {
+            TempImageManager.deleteTempFile(getApplication(), imageUri)
         }
     }
 

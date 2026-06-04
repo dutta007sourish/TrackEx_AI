@@ -39,8 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
-import java.io.File
+import com.ai.trackex.util.TempImageManager
 import java.net.URLEncoder
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,17 +50,6 @@ fun AddExpenseScreen(
 ) {
     val context = LocalContext.current
     var tempImageUri by remember { mutableStateOf<Uri?>(null) }
-
-    fun createTempImageUri(): Uri {
-        val imageDir = File(context.cacheDir, "bill_images")
-        imageDir.mkdirs()
-        val tempFile = File.createTempFile("bill_", ".jpg", imageDir)
-        return FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            tempFile
-        )
-    }
 
     val takePictureLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
@@ -85,7 +73,7 @@ fun AddExpenseScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            val uri = createTempImageUri()
+            val uri = TempImageManager.createTempImageUri(context)
             tempImageUri = uri
             takePictureLauncher.launch(uri)
         } else {
@@ -96,7 +84,7 @@ fun AddExpenseScreen(
     fun launchCamera() {
         val permission = Manifest.permission.CAMERA
         if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
-            val uri = createTempImageUri()
+            val uri = TempImageManager.createTempImageUri(context)
             tempImageUri = uri
             takePictureLauncher.launch(uri)
         } else {

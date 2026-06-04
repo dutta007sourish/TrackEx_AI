@@ -72,11 +72,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.trackex.data.local.Expense
+import com.ai.trackex.util.TempImageManager
 import com.ai.trackex.util.toDisplayDateTime
-import java.io.File
 import java.net.URLEncoder
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -143,15 +142,9 @@ fun HomeScreen(
         else expenses.filter { it.note.contains(searchQuery, ignoreCase = true) }
     }
 
-    fun createTempImageUri(): Uri {
-        val imageDir = File(context.cacheDir, "bill_images")
-        imageDir.mkdirs()
-        val tempFile = File.createTempFile("bill_", ".jpg", imageDir)
-        return FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            tempFile
-        )
+    // Clean up stale temp images from previous sessions on screen launch
+    LaunchedEffect(Unit) {
+        TempImageManager.cleanupStaleFiles(context)
     }
 
     val takePictureLauncher = rememberLauncherForActivityResult(
@@ -176,7 +169,7 @@ fun HomeScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            val uri = createTempImageUri()
+            val uri = TempImageManager.createTempImageUri(context)
             tempImageUri = uri
             takePictureLauncher.launch(uri)
         } else {
@@ -188,7 +181,7 @@ fun HomeScreen(
         showBottomSheet = false
         val permission = Manifest.permission.CAMERA
         if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
-            val uri = createTempImageUri()
+            val uri = TempImageManager.createTempImageUri(context)
             tempImageUri = uri
             takePictureLauncher.launch(uri)
         } else {
