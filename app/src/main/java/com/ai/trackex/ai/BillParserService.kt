@@ -17,6 +17,7 @@ import com.ai.trackex.ai.model.ParsedExpenseItem
 import com.ai.trackex.data.local.Category
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -86,7 +87,7 @@ Respond ONLY with the JSON object."""
         try {
             val apiKey = BuildConfig.OPENAI_API_KEY
             if (apiKey.isBlank()) {
-                return@withContext Result.failure(IllegalStateException("OpenAI API key not configured. Add OPENAI_API_KEY to local.properties"))
+                throw BillParserException(BillParserException.Kind.MISSING_API_KEY)
             }
 
             val base64Image = encodeImageToBase64(imageUri)
@@ -128,17 +129,19 @@ Respond ONLY with the JSON object."""
 
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string() ?: "Unknown error"
-                return@withContext Result.failure(
-                    RuntimeException("OpenAI API error (${response.code}): $errorBody")
+                throw BillParserException(
+                    kind = BillParserException.Kind.HTTP_ERROR,
+                    httpCode = response.code,
+                    message = errorBody
                 )
             }
 
             val responseBody = response.body?.string()
-                ?: return@withContext Result.failure(RuntimeException("Empty response from OpenAI"))
+                ?: throw BillParserException(BillParserException.Kind.EMPTY_RESPONSE)
 
             val chatResponse = json.decodeFromString(ChatCompletionResponse.serializer(), responseBody)
             val content = chatResponse.choices.firstOrNull()?.message?.content
-                ?: return@withContext Result.failure(RuntimeException("No content in OpenAI response"))
+                ?: throw BillParserException(BillParserException.Kind.EMPTY_RESPONSE)
 
             val cleanedJson = content
                 .trim()
@@ -150,7 +153,7 @@ Respond ONLY with the JSON object."""
             val parsed = json.decodeFromString(ParsedBillResponse.serializer(), cleanedJson)
             Result.success(parsed.items)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(mapError(e))
         }
     }
 
@@ -162,7 +165,7 @@ Respond ONLY with the JSON object."""
         try {
             val apiKey = BuildConfig.OPENAI_API_KEY
             if (apiKey.isBlank()) {
-                return@withContext Result.failure(IllegalStateException("OpenAI API key not configured"))
+                throw BillParserException(BillParserException.Kind.MISSING_API_KEY)
             }
 
             val itemsJson = json.encodeToString(ParsedBillResponse.serializer(), ParsedBillResponse(currentItems))
@@ -210,15 +213,19 @@ Apply the edits described in the voice command and return the updated JSON in th
 
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string() ?: "Unknown error"
-                return@withContext Result.failure(RuntimeException("OpenAI API error (${response.code}): $errorBody"))
+                throw BillParserException(
+                    kind = BillParserException.Kind.HTTP_ERROR,
+                    httpCode = response.code,
+                    message = errorBody
+                )
             }
 
             val responseBody = response.body?.string()
-                ?: return@withContext Result.failure(RuntimeException("Empty response from OpenAI"))
+                ?: throw BillParserException(BillParserException.Kind.EMPTY_RESPONSE)
 
             val chatResponse = json.decodeFromString(ChatCompletionResponse.serializer(), responseBody)
             val content = chatResponse.choices.firstOrNull()?.message?.content
-                ?: return@withContext Result.failure(RuntimeException("No content in OpenAI response"))
+                ?: throw BillParserException(BillParserException.Kind.EMPTY_RESPONSE)
 
             val cleanedJson = content.trim()
                 .removePrefix("```json")
@@ -229,8 +236,14 @@ Apply the edits described in the voice command and return the updated JSON in th
             val parsed = json.decodeFromString(ParsedBillResponse.serializer(), cleanedJson)
             Result.success(parsed.items)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(mapError(e))
         }
+    }
+
+    private fun mapError(e: Throwable): Throwable = when (e) {
+        is BillParserException -> e
+        is SerializationException -> BillParserException(BillParserException.Kind.DECODE_ERROR, cause = e)
+        else -> e
     }
 
     private fun encodeImageToBase64(uri: Uri): String {

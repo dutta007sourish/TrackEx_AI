@@ -9,6 +9,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.ai.trackex.ai.BillParserException
 import com.ai.trackex.ai.BillParserService
 import com.ai.trackex.ai.model.ParsedExpenseItem
 import com.ai.trackex.data.local.AppDatabase
@@ -102,11 +103,19 @@ class ReviewViewModel(application: Application) : AndroidViewModel(application) 
             val validCategoryNames = cats.map { it.name }.toSet()
             result.fold(
                 onSuccess = { parsedItems ->
-                    val items = parsedItems.map { it.toItemState(validCategoryNames) }
-                    _uiState.value = ReviewUiState(
-                        isLoading = false,
-                        items = items
-                    )
+                    if (parsedItems.isEmpty()) {
+                        _uiState.value = ReviewUiState(
+                            isLoading = false,
+                            error = "No items found in the bill. Please add them manually.",
+                            items = listOf(ExpenseItemState())
+                        )
+                    } else {
+                        val items = parsedItems.map { it.toItemState(validCategoryNames) }
+                        _uiState.value = ReviewUiState(
+                            isLoading = false,
+                            items = items
+                        )
+                    }
                 },
                 onFailure = { error ->
                     _uiState.value = ReviewUiState(
@@ -246,10 +255,10 @@ class ReviewViewModel(application: Application) : AndroidViewModel(application) 
                         isProcessingVoice = false
                     )
                 },
-                onFailure = {
+                onFailure = { error ->
                     _uiState.value = _uiState.value.copy(
                         isProcessingVoice = false,
-                        voiceError = "AI was unable to process your request"
+                        voiceError = toUserFriendlyError(error)
                     )
                 }
             )
@@ -285,40 +294,43 @@ class ReviewViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun toUserFriendlyError(error: Throwable): String {
-        val message = error.message ?: ""
-        return when {
-            error is java.net.UnknownHostException ||
-                message.contains("Unable to resolve host", ignoreCase = true) ->
+        if (error is BillParserException) {
+            return when (error.kind) {
+                BillParserException.Kind.MISSING_API_KEY ->
+                    "OpenAI API key is missing. Please configure it and try again."
+
+                BillParserException.Kind.EMPTY_RESPONSE ->
+                    "The AI returned an empty response. Please try again."
+
+                BillParserException.Kind.DECODE_ERROR ->
+                    "Couldn't understand the AI's response. Please try again."
+
+                BillParserException.Kind.HTTP_ERROR -> when (error.httpCode) {
+                    401, 403 ->
+                        "Authentication failed. Your OpenAI API key may be invalid or expired."
+                    429 ->
+                        "Too many requests. Please wait a moment and try again."
+                    in 400..499 ->
+                        "The request was rejected by the AI service (error ${error.httpCode}). Please try again."
+                    in 500..599 ->
+                        "The AI service is temporarily unavailable. Please try again later."
+                    else ->
+                        "The AI service returned an error. Please try again."
+                }
+            }
+        }
+
+        return when (error) {
+            is java.net.UnknownHostException ->
                 "No internet connection. Please check your network and try again."
 
-            error is javax.net.ssl.SSLException ||
-                message.contains("CertPathValidator", ignoreCase = true) ||
-                message.contains("SSL", ignoreCase = true) ||
-                message.contains("Trust anchor", ignoreCase = true) ->
+            is javax.net.ssl.SSLException ->
                 "Secure connection failed. Please check your network or try again later."
 
-            error is java.net.SocketTimeoutException ||
-                message.contains("timeout", ignoreCase = true) ->
+            is java.net.SocketTimeoutException ->
                 "Request timed out. Please try again."
 
-            message.contains("API key", ignoreCase = true) ||
-                message.contains("401", ignoreCase = true) ||
-                message.contains("Unauthorized", ignoreCase = true) ->
-                "Invalid API key. Please check your OpenAI API key in settings."
-
-            message.contains("429", ignoreCase = true) ||
-                message.contains("rate limit", ignoreCase = true) ->
-                "Too many requests. Please wait a moment and try again."
-
-            message.contains("500", ignoreCase = true) ||
-                message.contains("server error", ignoreCase = true) ->
-                "The AI service is temporarily unavailable. Please try again later."
-
-            message.contains("parse", ignoreCase = true) ||
-                message.contains("JSON", ignoreCase = true) ->
-                "Could not read the bill. Try taking a clearer photo."
-
-            else -> "Something went wrong while analyzing the bill. Please try again."
+            else -> "Something went wrong. Please try again."
         }
     }
 
