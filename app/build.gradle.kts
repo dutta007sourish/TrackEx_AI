@@ -25,8 +25,8 @@ android {
         applicationId = "com.ai.trackex"
         minSdk = 33
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.0.1-SNAPSHOT"
+        versionCode = 2
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
